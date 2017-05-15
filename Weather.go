@@ -52,7 +52,7 @@ func GetDarkSkyWeather(location Location, ch chan<- Weather) {
 }
 
 func makeRequest(coordinates string) map[string]interface{} {
-	resp, err := http.Get("https://api.darksky.net/forecast/" + "472557e25c253f4690f7496fbc50e345" + "/" + coordinates)
+	resp, err := http.Get("https://api.darksky.net/forecast/" + "" + "/" + coordinates)
 	if err != nil {
 		log.Println(err)
 	}
