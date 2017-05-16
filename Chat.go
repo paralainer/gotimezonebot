@@ -6,12 +6,14 @@ import (
 	"strings"
 	"time"
 	"log"
+	"fmt"
 )
 
 type Chat struct {
-	ChatID int64
-	state  string
-	bot    TgBot
+	ChatID  int64
+	state   string
+	context interface{}
+	bot     TgBot
 }
 
 func NewChat(chatId int64, bot TgBot) *Chat {
@@ -32,7 +34,7 @@ const (
 func (chat *Chat) ProcessMessage(message *tgbotapi.Message) {
 	if message.IsCommand() {
 		chat.processCommand(message)
-	} else if message.Text != "" && chat.state != no_state {
+	} else if chat.state != no_state {
 		chat.processConversation(message)
 	}
 }
@@ -52,6 +54,32 @@ func (chat *Chat) processConversation(message *tgbotapi.Message) {
 	switch chat.state {
 	case removing_location:
 		chat.removeLocationByAlias(message.Text)
+		break
+	case adding_location_name:
+		chat.setLocationName(message.Text)
+		break
+	case adding_location_coordinates:
+		chat.setLocationCoordinates(message.Location)
+
+	}
+}
+func (chat *Chat) setLocationCoordinates(location *tgbotapi.Location) {
+	if location != nil {
+		chat.state = no_state
+		newLocation := chat.context.(*Location)
+		newLocation.Coordinates = fmt.Sprintf("%.6f", location.Latitude) + "," + fmt.Sprintf("%.6f", location.Longitude)
+		chat.bot.Location.AddLocation(chat.ChatID, *newLocation)
+		chat.sendText("Added")
+	} else {
+		chat.sendText("Please send location")
+	}
+}
+func (chat *Chat) setLocationName(locName string) {
+	if strings.Trim(locName, " ") != "" {
+		chat.state = adding_location_coordinates
+		loc := chat.context.(*Location)
+		loc.Alias = locName
+		chat.sendText("Send me a location of that place")
 	}
 }
 func (chat *Chat) processCommand(message *tgbotapi.Message) {
@@ -95,18 +123,9 @@ func (chat *Chat) removeLocationByAlias(alias string) {
 }
 
 func (chat *Chat) startAddLocation(message *tgbotapi.Message) {
-	arguments := message.CommandArguments()
-	parts := strings.SplitN(arguments, " ", 3)
-	if len(parts) != 3 {
-		chat.bot.Api.Send(tgbotapi.NewMessage(message.Chat.ID, "Usage: /addtz"))
-		return
-	}
-
-	chatTz := Location{
-		Alias: parts[1],
-	}
-
-	chat.bot.Location.AddLocation(message.Chat.ID, chatTz)
+	chat.state = adding_location_name
+	chat.context = &Location{}
+	chat.sendText("Send me location name")
 }
 
 func (chat *Chat) sendTime(message *tgbotapi.Message) {

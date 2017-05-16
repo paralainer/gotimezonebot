@@ -42,7 +42,7 @@ func (botTz MongoTimezonesService) AddLocation(chatID int64, location Location) 
 
 		botTz.collection.Insert(tz)
 	} else {
-		//botTz.Collection.Update(bson.M{"chatId": chatID}, )
+		botTz.collection.Update(bson.M{"chatId": chatID}, bson.M{"$addToSet": bson.M{"locations": location}} )
 	}
 }
 
