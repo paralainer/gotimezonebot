@@ -32,27 +32,29 @@ var emojis = map[string]string{
 
 type GetWeather func(location Location, ch chan<- Weather)
 
-func GetDarkSkyWeather(location Location, ch chan<- Weather) {
-	result := makeRequest(location.Coordinates)
+func CreateDarkSkyWeatherFetcher(apiKey string) GetWeather {
+	return func(location Location, ch chan<- Weather) {
+		result := makeRequest(apiKey, location.Coordinates)
 
-	currentWeather := result["currently"].(map[string]interface{})
+		currentWeather := result["currently"].(map[string]interface{})
 
-	temp := strconv.Itoa(int(fahrenheit2Celsius(currentWeather["temperature"].(float64))))
+		temp := strconv.Itoa(int(fahrenheit2Celsius(currentWeather["temperature"].(float64))))
 
-	emoji, ok := emojis[currentWeather["icon"].(string)];
-	if (!ok) {
-		emoji = "";
+		emoji, ok := emojis[currentWeather["icon"].(string)];
+		if (!ok) {
+			emoji = "";
+		}
+		ch <- Weather{
+			Conditions: " " + emoji + " " + temp + "℃",
+			Timezone:   result["timezone"].(string),
+			Location:   location,
+		}
+
 	}
-	ch <- Weather{
-		Conditions: " " + emoji + " " + temp + "℃",
-		Timezone:   result["timezone"].(string),
-		Location:   location,
-	}
-
 }
 
-func makeRequest(coordinates string) map[string]interface{} {
-	resp, err := http.Get("https://api.darksky.net/forecast/" + "" + "/" + coordinates)
+func makeRequest(apiKey string, coordinates string) map[string]interface{} {
+	resp, err := http.Get("https://api.darksky.net/forecast/" + apiKey + "/" + coordinates)
 	if err != nil {
 		log.Println(err)
 	}
@@ -64,5 +66,5 @@ func makeRequest(coordinates string) map[string]interface{} {
 }
 
 func fahrenheit2Celsius(f float64) float64 {
-	return ((f - 32) / 1.8)
+	return (f - 32) / 1.8
 }

@@ -12,10 +12,18 @@ func main() {
 		log.Panic("No TELEGRAM_TOKEN specified")
 	}
 
+
+	weatherApiKey := os.Getenv("WEATHER_API_KEY")
+	if weatherApiKey == "" {
+		log.Panic("No WEATHER_API_KEY specified")
+	}
+
+
+
 	tzService, session := initMongo()
 	defer session.Close()
 
-	StartBot(telegramToken, tzService, GetDarkSkyWeather);
+	StartBot(telegramToken, tzService, CreateDarkSkyWeatherFetcher(weatherApiKey));
 }
 
 func initMongo() (*MongoTimezonesService, *mgo.Session) {
@@ -23,7 +31,9 @@ func initMongo() (*MongoTimezonesService, *mgo.Session) {
 	if err != nil {
 		panic(err)
 	}
+	session.SetSafe(&mgo.Safe{})
 	c := session.DB("tzbot").C("MONGO_TZ_COLLECTION")
+
 	tzService := NewTzService(c)
 	return tzService, session
 }
