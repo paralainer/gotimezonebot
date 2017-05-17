@@ -60,9 +60,9 @@ func CreateDarkSkyWeatherFetcher(apiKey string) GetWeather {
 
 		temp := strconv.Itoa(int(fahrenheit2Celsius(currentWeather["temperature"].(float64))))
 
-		emoji, ok := emojis[currentWeather["icon"].(string)];
-		if (!ok) {
-			emoji = "";
+		emoji, ok := emojis[currentWeather["icon"].(string)]
+		if !ok {
+			emoji = ""
 		}
 		ch <- Weather{
 			Conditions: " " + emoji + " " + temp + "℃",
