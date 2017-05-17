@@ -6,6 +6,8 @@ import (
 	"log"
 	"encoding/json"
 	"strconv"
+	"github.com/patrickmn/go-cache"
+	"time"
 )
 
 type Weather struct {
@@ -31,6 +33,24 @@ var emojis = map[string]string{
 }
 
 type GetWeather func(location Location, ch chan<- Weather)
+
+func WrapWeatherWithCache(getWeather GetWeather) GetWeather {
+	weatherCache := cache.New(time.Duration(15*time.Minute), time.Duration(1*time.Hour))
+
+	return func(location Location, ch chan<- Weather) {
+		result, ok := weatherCache.Get(location.Coordinates)
+		if !ok {
+			wCh := make(chan Weather)
+			getWeather(location, wCh)
+			weather := <-wCh
+			weatherCache.SetDefault(location.Coordinates, weather)
+			ch <- weather
+		} else {
+			ch <- result.(Weather)
+		}
+	}
+
+}
 
 func CreateDarkSkyWeatherFetcher(apiKey string) GetWeather {
 	return func(location Location, ch chan<- Weather) {
