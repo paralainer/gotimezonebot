@@ -133,6 +133,10 @@ func (chat *Chat) processCommand(message *tgbotapi.Message) {
 func (chat *Chat) startRemoveLocation(message *tgbotapi.Message) {
 	locations := chat.bot.Location.GetChatLocations(message.Chat.ID)
 	buttons := [][]tgbotapi.KeyboardButton{}
+
+	sort.Slice(locations, func(i, j int) bool {
+		return locations[i].Alias < locations[j].Alias
+	})
 	for _, loc := range locations {
 		buttons = append(buttons, tgbotapi.NewKeyboardButtonRow(tgbotapi.NewKeyboardButton(loc.Alias)))
 	}
