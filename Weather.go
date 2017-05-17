@@ -41,7 +41,7 @@ func WrapWeatherWithCache(getWeather GetWeather) GetWeather {
 		result, ok := weatherCache.Get(location.Coordinates)
 		if !ok {
 			wCh := make(chan Weather)
-			getWeather(location, wCh)
+			go getWeather(location, wCh)
 			weather := <-wCh
 			weatherCache.SetDefault(location.Coordinates, weather)
 			ch <- weather
