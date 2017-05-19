@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"gotimezonebot/app"
 	"gopkg.in/mgo.v2"
 )
 
@@ -20,10 +21,10 @@ func main() {
 	tzService, session := initMongo()
 	defer session.Close()
 
-	StartBot(telegramToken, tzService, WrapWeatherWithCache(CreateDarkSkyWeatherFetcher(weatherApiKey)));
+	app.StartBot(telegramToken, tzService, app.WrapWeatherWithCache(app.CreateDarkSkyWeatherFetcher(weatherApiKey)));
 }
 
-func initMongo() (*MongoTimezonesService, *mgo.Session) {
+func initMongo() (*app.MongoLocationsService, *mgo.Session) {
 	session, err := mgo.Dial(os.Getenv("MONGO_URL"))
 	if err != nil {
 		panic(err)
@@ -31,6 +32,6 @@ func initMongo() (*MongoTimezonesService, *mgo.Session) {
 	session.SetSafe(&mgo.Safe{})
 	c := session.DB("tzbot").C("MONGO_TZ_COLLECTION")
 
-	tzService := NewTzService(c)
+	tzService := app.NewLocationsService(c)
 	return tzService, session
 }

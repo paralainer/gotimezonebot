@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"log"
@@ -6,13 +6,13 @@ import (
 )
 
 type TgBot struct {
-	Location *MongoTimezonesService
+	Location *MongoLocationsService
 	Api      *tgbotapi.BotAPI
 	Weather  GetWeather
 	chats map[int64]*Chat
 }
 
-func StartBot(token string, tzService *MongoTimezonesService, weather GetWeather) {
+func StartBot(token string, locationService *MongoLocationsService, weather GetWeather) {
 	botApi, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		log.Panic(err)
@@ -20,9 +20,9 @@ func StartBot(token string, tzService *MongoTimezonesService, weather GetWeather
 
 	bot := &TgBot{
 		Api:      botApi,
-		Location: tzService,
+		Location: locationService,
 		Weather:  weather,
-		chats: make(map[int64]*Chat, 10),
+		chats:    make(map[int64]*Chat, 10),
 	}
 
 	bot.startBot()

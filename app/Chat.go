@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"gopkg.in/telegram-bot-api.v4"
@@ -52,6 +52,22 @@ func (chat *Chat) sendWithReply(text string, replyMarkup interface{}) {
 	chat.bot.Api.Send(newMessage)
 }
 
+func (chat *Chat) processCommand(message *tgbotapi.Message) {
+	chat.state = no_state
+	switch message.Command() {
+	case "tztime":
+		chat.sendTime(message)
+		break
+	case "addtz":
+		chat.startAddLocation(message)
+		break
+	case "rmtz":
+		chat.startRemoveLocation(message)
+		break
+
+	}
+}
+
 func (chat *Chat) processConversation(message *tgbotapi.Message) {
 	switch chat.state {
 	case removing_location:
@@ -68,6 +84,7 @@ func (chat *Chat) processConversation(message *tgbotapi.Message) {
 
 	}
 }
+
 func (chat *Chat) confirmLocation(answer string) {
 	if answer == "Yes" {
 		chat.state = no_state
@@ -80,6 +97,7 @@ func (chat *Chat) confirmLocation(answer string) {
 	}
 
 }
+
 func (chat *Chat) setLocationCoordinates(location *tgbotapi.Location) {
 	if location != nil {
 		chat.state = no_state
@@ -88,10 +106,12 @@ func (chat *Chat) setLocationCoordinates(location *tgbotapi.Location) {
 		chat.bot.Location.AddLocation(chat.ChatID, *newLocation)
 		chat.sendText("Added")
 	} else {
+
 		chat.state = adding_location_coordinates
 		chat.sendText("Please send location")
 	}
 }
+
 func (chat *Chat) setLocationName(locName string) {
 	if strings.Trim(locName, " ") != "" {
 
@@ -114,21 +134,7 @@ func (chat *Chat) setLocationName(locName string) {
 		}
 	}
 }
-func (chat *Chat) processCommand(message *tgbotapi.Message) {
-	chat.state = no_state
-	switch message.Command() {
-	case "tztime":
-		chat.sendTime(message)
-		break
-	case "addtz":
-		chat.startAddLocation(message)
-		break
-	case "rmtz":
-		chat.startRemoveLocation(message)
-		break
 
-	}
-}
 
 func (chat *Chat) startRemoveLocation(message *tgbotapi.Message) {
 	locations := chat.bot.Location.GetChatLocations(message.Chat.ID)
