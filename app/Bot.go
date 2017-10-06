@@ -14,9 +14,12 @@ type TgBot struct {
 
 func StartBot(token string, locationService *MongoLocationsService, weather GetWeather) {
 	botApi, err := tgbotapi.NewBotAPI(token)
+	
 	if err != nil {
 		log.Panic(err)
 	}
+	
+	botApi.Debug = true
 
 	bot := &TgBot{
 		Api:      botApi,
