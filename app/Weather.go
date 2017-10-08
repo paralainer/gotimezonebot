@@ -32,29 +32,44 @@ var emojis = map[string]string{
 	"tornado":             "\U0001f32a",
 }
 
-type GetWeather func(location Location, ch chan<- Weather)
+type GetWeather func(location Location, ch chan<- WeatherResult)
 
 func WrapWeatherWithCache(getWeather GetWeather) GetWeather {
 	weatherCache := cache.New(time.Duration(15*time.Minute), time.Duration(1*time.Hour))
 
-	return func(location Location, ch chan<- Weather) {
+	return func(location Location, ch chan<- WeatherResult) {
 		result, ok := weatherCache.Get(location.Coordinates)
 		if !ok {
-			wCh := make(chan Weather)
+			wCh := make(chan WeatherResult)
 			go getWeather(location, wCh)
 			weather := <-wCh
-			weatherCache.SetDefault(location.Coordinates, weather)
+			if weather.Error != nil {
+				weatherCache.SetDefault(location.Coordinates, weather.Weather)
+			}
 			ch <- weather
 		} else {
-			ch <- result.(Weather)
+			ch <- WeatherResult{
+				Weather: result.(Weather),
+			}
 		}
 	}
 
 }
 
+type WeatherResult struct {
+	Weather Weather
+	Error   error
+}
+
 func CreateDarkSkyWeatherFetcher(apiKey string) GetWeather {
-	return func(location Location, ch chan<- Weather) {
-		result := makeRequest(apiKey, location.Coordinates)
+	return func(location Location, ch chan<- WeatherResult) {
+		result, err := makeRequest(apiKey, location.Coordinates)
+
+		if err != nil {
+			ch <- WeatherResult{
+				Error: err,
+			}
+		}
 
 		currentWeather := result["currently"].(map[string]interface{})
 
@@ -64,25 +79,29 @@ func CreateDarkSkyWeatherFetcher(apiKey string) GetWeather {
 		if !ok {
 			emoji = ""
 		}
-		ch <- Weather{
-			Conditions: " " + emoji + " " + temp + "℃",
-			Timezone:   result["timezone"].(string),
-			Location:   location,
+		ch <- WeatherResult{
+			Weather: Weather{
+				Conditions: " " + emoji + " " + temp + "℃",
+				Timezone:   result["timezone"].(string),
+				Location:   location,
+			},
 		}
-
 	}
 }
 
-func makeRequest(apiKey string, coordinates string) map[string]interface{} {
+func makeRequest(apiKey string, coordinates string) (map[string]interface{}, error) {
 	resp, err := http.Get("https://api.darksky.net/forecast/" + apiKey + "/" + coordinates)
 	if err != nil {
-		log.Println(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
 	var f interface{}
 	json.Unmarshal(body, &f)
-	return f.(map[string]interface{})
+	return f.(map[string]interface{}), nil
 }
 
 func fahrenheit2Celsius(f float64) float64 {

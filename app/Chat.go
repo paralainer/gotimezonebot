@@ -184,15 +184,21 @@ func (chat *Chat) sendTime(message *tgbotapi.Message) {
 func (chat *Chat) convertTzToString(locations []Location) string {
 	result := make([]string, len(locations))
 	currentTime := time.Now()
-	weatherChan := make(chan Weather)
+	weatherChan := make(chan WeatherResult)
 	for _, location := range locations {
 		go chat.bot.Weather(location, weatherChan)
 	}
 
 	for range locations {
-		weather := <-weatherChan
-		formattedTzTime := formatTzTime(weather.Timezone, currentTime)
-		result = append(result, weather.Location.Alias+": "+formattedTzTime+weather.Conditions)
+		weatherResult := <-weatherChan
+		if weatherResult.Error != nil {
+			log.Println(weatherResult.Error)
+			result = append(result,"Error occurred: " + weatherResult.Error.Error())
+		} else {
+			weather := weatherResult.Weather
+			formattedTzTime := formatTzTime(weather.Timezone, currentTime)
+			result = append(result, weather.Location.Alias+": "+formattedTzTime+weather.Conditions)
+		}
 
 	}
 
