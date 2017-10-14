@@ -3,7 +3,6 @@ package app
 import (
 	"net/http"
 	"io/ioutil"
-	"log"
 	"encoding/json"
 	"strconv"
 	"github.com/patrickmn/go-cache"

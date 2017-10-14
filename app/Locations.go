@@ -28,7 +28,10 @@ func NewLocationsService(mongoCollection *mgo.Collection) *MongoLocationsService
 
 func (botTz MongoLocationsService) GetChatLocations(chatID int64) []Location {
 	tz := &tz{}
-	botTz.collection.Find(bson.M{"chatId": chatID}).One(&tz)
+	err := botTz.collection.Find(bson.M{"chatId": chatID}).One(&tz)
+	if err != nil {
+		log.Println(err)
+	}
 	return tz.Locations
 }
 
