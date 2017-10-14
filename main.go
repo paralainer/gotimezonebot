@@ -30,8 +30,9 @@ func initMongo() (*app.MongoLocationsService, *mgo.Session) {
 		panic(err)
 	}
 	session.SetSafe(&mgo.Safe{})
-	c := session.DB("tzbot").C("MONGO_TZ_COLLECTION")
+	tzService := app.NewLocationsService(
+		session,
+		func(s *mgo.Session) *mgo.Collection { return s.DB("tzbot").C("MONGO_TZ_COLLECTION") })
 
-	tzService := app.NewLocationsService(c)
 	return tzService, session
 }

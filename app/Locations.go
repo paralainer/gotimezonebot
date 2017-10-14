@@ -17,18 +17,29 @@ type tz struct {
 }
 
 type MongoLocationsService struct {
-	collection *mgo.Collection
+	session *mgo.Session
+	getCollection GetCollection
 }
 
-func NewLocationsService(mongoCollection *mgo.Collection) *MongoLocationsService {
+type GetCollection func(session *mgo.Session) *mgo.Collection
+
+func NewLocationsService(mongoSession *mgo.Session, getCollection GetCollection) *MongoLocationsService {
 	return &MongoLocationsService{
-		collection: mongoCollection,
+		session: mongoSession,
+		getCollection: getCollection,
 	}
+}
+
+func (botTz MongoLocationsService) collection() (*mgo.Collection, *mgo.Session) {
+    session := botTz.session.Copy()
+	return botTz.getCollection(session), session
 }
 
 func (botTz MongoLocationsService) GetChatLocations(chatID int64) []Location {
 	tz := &tz{}
-	err := botTz.collection.Find(bson.M{"chatId": chatID}).One(&tz)
+	collection, session := botTz.collection()
+	defer session.Close()
+	err := collection.Find(bson.M{"chatId": chatID}).One(&tz)
 	if err != nil {
 		log.Println(err)
 	}
@@ -36,23 +47,27 @@ func (botTz MongoLocationsService) GetChatLocations(chatID int64) []Location {
 }
 
 func (botTz MongoLocationsService) AddLocation(chatID int64, location Location) {
-	count, _ := botTz.collection.Find(bson.M{"chatId": chatID}).Count()
+	collection, session := botTz.collection()
+	defer session.Close()
+	count, _ := collection.Find(bson.M{"chatId": chatID}).Count()
 	if count == 0 {
 		tz := &tz{
 			ChatID:    chatID,
 			Locations: []Location{location},
 		}
 
-		botTz.collection.Insert(tz)
+		collection.Insert(tz)
 	} else {
-		botTz.collection.Update(bson.M{"chatId": chatID}, bson.M{"$addToSet": bson.M{"locations": location}} )
+		collection.Update(bson.M{"chatId": chatID}, bson.M{"$addToSet": bson.M{"locations": location}} )
 	}
 }
 
 func (botTz MongoLocationsService) RemoveTimezone(chatID int64, alias string) bool {
 	findQuery := bson.M{"chatId": chatID, "locations": bson.M{"$elemMatch": bson.M{"alias": alias}}}
 	updateQuery := bson.M{"$pull": bson.M{"locations": bson.M{"alias": alias}}}
-	err := botTz.collection.Update(findQuery, updateQuery)
+	collection, session := botTz.collection()
+	defer session.Close()
+	err := collection.Update(findQuery, updateQuery)
 	if err == mgo.ErrNotFound {
 		return false
 	}
