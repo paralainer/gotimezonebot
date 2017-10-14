@@ -19,7 +19,7 @@ func StartBot(token string, locationService *MongoLocationsService, weather GetW
 		log.Panic(err)
 	}
 	
-	botApi.Debug = true
+	//botApi.Debug = true
 
 	bot := &TgBot{
 		Api:      botApi,
