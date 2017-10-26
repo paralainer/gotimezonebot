@@ -126,7 +126,9 @@ func (chat *Chat) setLocationCoordinates(location *tgbotapi.Location) {
 
 func (chat *Chat) setLocationName(locName string) {
 	if strings.Trim(locName, " ") != "" {
-
+		if chat.context == nil {
+			chat.context = &Location{}
+		}
 		loc := chat.context.(*Location)
 		loc.Alias = locName
 		geoInfo, err := GetGeoInfo(locName)
