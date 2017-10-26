@@ -36,7 +36,8 @@ func (chat *Chat) ProcessMessage(message *tgbotapi.Message) {
 	if message.IsCommand() {
 		chat.processCommand(message)
 	} else if message.Location != nil {
-		chat.sendLocationTimeAndWeather(formatCoordinates(message.Location))
+		location := message.Location
+		chat.sendLocationTimeAndWeather(location.Latitude, location.Longitude)
 	} else if chat.state != no_state {
 		chat.processConversation(message)
 	}
@@ -58,7 +59,12 @@ func (chat *Chat) processCommand(message *tgbotapi.Message) {
 	chat.state = no_state
 	switch message.Command() {
 	case "tztime":
-		chat.sendTime(message)
+		arguments := message.CommandArguments()
+		if arguments != "" {
+			chat.sendLocationTimeAndWeatherByAlias(arguments)
+		} else {
+			chat.sendTime(message)
+		}
 		break
 	case "addtz":
 		chat.startAddLocation(message)
@@ -104,11 +110,10 @@ func (chat *Chat) setLocationCoordinates(location *tgbotapi.Location) {
 	if location != nil {
 		chat.state = no_state
 		newLocation := chat.context.(*Location)
-		newLocation.Coordinates = formatCoordinates(location)
+		newLocation.Coordinates = formatCoordinates(location.Latitude, location.Longitude)
 		chat.bot.Location.AddLocation(chat.ChatID, *newLocation)
 		chat.sendText("Added")
 	} else {
-
 		chat.state = adding_location_coordinates
 		chat.sendText("Please send location")
 	}
@@ -131,7 +136,7 @@ func (chat *Chat) setLocationName(locName string) {
 					tgbotapi.NewKeyboardButton("Yes"),
 					tgbotapi.NewKeyboardButton("No"),
 				)))
-			loc.Coordinates = fmt.Sprintf("%.6f", geoInfo.Lat) + "," + fmt.Sprintf("%.6f", geoInfo.Lon)
+			loc.Coordinates = formatCoordinates(geoInfo.Lat, geoInfo.Lon)
 			chat.state = confirming_location
 		}
 	}
@@ -208,9 +213,20 @@ func (chat *Chat) convertTzToString(locations []Location) string {
 	return strings.Join(result, "\n")
 }
 
-func (chat *Chat) sendLocationTimeAndWeather(coordinates string) {
+func (chat * Chat) sendLocationTimeAndWeatherByAlias(alias string) {
+	geoInfo, err := GetGeoInfo(alias)
+	if err != nil {
+		chat.sendText("Can't find such place")
+		return
+	}
+	chat.sendText(geoInfo.LocationDisplayName)
+	chat.bot.Api.Send(tgbotapi.NewLocation(chat.ChatID, geoInfo.Lat, geoInfo.Lon))
+	chat.sendLocationTimeAndWeather(geoInfo.Lat, geoInfo.Lon)
+}
+
+func (chat *Chat) sendLocationTimeAndWeather(lat float64, lng float64) {
 	weatherChan := make(chan WeatherResult)
-	go chat.bot.Weather(Location{Coordinates: coordinates}, weatherChan)
+	go chat.bot.Weather(Location{Coordinates: formatCoordinates(lat, lng)}, weatherChan)
 	weatherResult := <-weatherChan
 
 	if weatherResult.Error != nil {
@@ -223,8 +239,8 @@ func (chat *Chat) sendLocationTimeAndWeather(coordinates string) {
 	}
 }
 
-func formatCoordinates(location *tgbotapi.Location) string {
-	return fmt.Sprintf("%.6f", location.Latitude) + "," + fmt.Sprintf("%.6f", location.Longitude)
+func formatCoordinates(lat float64, lng float64) string {
+	return fmt.Sprintf("%.6f",lat) + "," + fmt.Sprintf("%.6f", lng)
 }
 
 func formatTzTime(tz string, currentTime time.Time) (string) {
