@@ -35,6 +35,8 @@ const (
 func (chat *Chat) ProcessMessage(message *tgbotapi.Message) {
 	if message.IsCommand() {
 		chat.processCommand(message)
+	} else if message.Location != nil {
+		chat.sendLocationTimeAndWeather(formatCoordinates(message.Location))
 	} else if chat.state != no_state {
 		chat.processConversation(message)
 	}
@@ -102,7 +104,7 @@ func (chat *Chat) setLocationCoordinates(location *tgbotapi.Location) {
 	if location != nil {
 		chat.state = no_state
 		newLocation := chat.context.(*Location)
-		newLocation.Coordinates = fmt.Sprintf("%.6f", location.Latitude) + "," + fmt.Sprintf("%.6f", location.Longitude)
+		newLocation.Coordinates = formatCoordinates(location)
 		chat.bot.Location.AddLocation(chat.ChatID, *newLocation)
 		chat.sendText("Added")
 	} else {
@@ -134,7 +136,6 @@ func (chat *Chat) setLocationName(locName string) {
 		}
 	}
 }
-
 
 func (chat *Chat) startRemoveLocation(message *tgbotapi.Message) {
 	locations := chat.bot.Location.GetChatLocations(message.Chat.ID)
@@ -193,7 +194,7 @@ func (chat *Chat) convertTzToString(locations []Location) string {
 		weatherResult := <-weatherChan
 		if weatherResult.Error != nil {
 			log.Println(weatherResult.Error)
-			result = append(result,"Error occurred: " + weatherResult.Error.Error())
+			result = append(result, "Error occurred: "+weatherResult.Error.Error())
 		} else {
 			weather := weatherResult.Weather
 			formattedTzTime := formatTzTime(weather.Timezone, currentTime)
@@ -205,6 +206,25 @@ func (chat *Chat) convertTzToString(locations []Location) string {
 	sort.Strings(result)
 
 	return strings.Join(result, "\n")
+}
+
+func (chat *Chat) sendLocationTimeAndWeather(coordinates string) {
+	weatherChan := make(chan WeatherResult)
+	go chat.bot.Weather(Location{Coordinates: coordinates}, weatherChan)
+	weatherResult := <-weatherChan
+
+	if weatherResult.Error != nil {
+		log.Println(weatherResult.Error)
+		chat.sendText("Error occurred: " + weatherResult.Error.Error())
+	} else {
+		weather := weatherResult.Weather
+		formattedTzTime := formatTzTime(weather.Timezone, time.Now())
+		chat.sendText(formattedTzTime + weather.Conditions)
+	}
+}
+
+func formatCoordinates(location *tgbotapi.Location) string {
+	return fmt.Sprintf("%.6f", location.Latitude) + "," + fmt.Sprintf("%.6f", location.Longitude)
 }
 
 func formatTzTime(tz string, currentTime time.Time) (string) {
