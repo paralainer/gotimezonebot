@@ -67,7 +67,12 @@ func (chat *Chat) processCommand(message *tgbotapi.Message) {
 		}
 		break
 	case "addtz":
-		chat.startAddLocation(message)
+		arguments := message.CommandArguments()
+		if arguments != "" {
+			chat.setLocationName(arguments)
+		} else {
+			chat.startAddLocation(message)
+		}
 		break
 	case "rmtz":
 		chat.startRemoveLocation(message)
