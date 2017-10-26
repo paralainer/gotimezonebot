@@ -57,9 +57,9 @@ func (chat *Chat) sendWithReply(text string, replyMarkup interface{}) {
 
 func (chat *Chat) processCommand(message *tgbotapi.Message) {
 	chat.state = no_state
+	arguments := message.CommandArguments()
 	switch message.Command() {
 	case "tztime":
-		arguments := message.CommandArguments()
 		if arguments != "" {
 			chat.sendLocationTimeAndWeatherByAlias(arguments)
 		} else {
@@ -67,7 +67,6 @@ func (chat *Chat) processCommand(message *tgbotapi.Message) {
 		}
 		break
 	case "addtz":
-		arguments := message.CommandArguments()
 		if arguments != "" {
 			chat.setLocationName(arguments)
 		} else {
@@ -75,7 +74,11 @@ func (chat *Chat) processCommand(message *tgbotapi.Message) {
 		}
 		break
 	case "rmtz":
-		chat.startRemoveLocation(message)
+		if arguments != "" {
+			chat.removeLocationByAlias(arguments)
+		} else {
+			chat.startRemoveLocation(message)
+		}
 		break
 
 	}
@@ -166,6 +169,7 @@ func (chat *Chat) startRemoveLocation(message *tgbotapi.Message) {
 
 func (chat *Chat) removeLocationByAlias(alias string) {
 	chat.state = no_state
+	alias = strings.Trim(alias, " ")
 	deleted := chat.bot.Location.RemoveTimezone(chat.ChatID, alias)
 	var text string
 	if deleted {
