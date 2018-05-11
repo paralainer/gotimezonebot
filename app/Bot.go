@@ -7,17 +7,22 @@ import (
 	"context"
 	"os"
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/go-redis/cache"
 	"encoding/json"
+	"time"
+	"net/http"
+	"strconv"
 )
 
 type TgBot struct {
 	Location *MongoLocationsService
 	Api      *tgbotapi.BotAPI
 	Weather  GetWeather
-	chats map[int64]*Chat
+	redisCache *cache.Codec
+	local bool
 }
 
-func StartBot(token string, locationService *MongoLocationsService, weather GetWeather) {
+func StartBot(token string, locationService *MongoLocationsService, weather GetWeather, redisCache *cache.Codec, local bool) {
 	botApi, err := tgbotapi.NewBotAPI(token)
 
 	if err != nil {
@@ -30,7 +35,8 @@ func StartBot(token string, locationService *MongoLocationsService, weather GetW
 		Api:      botApi,
 		Location: locationService,
 		Weather:  weather,
-		chats:    make(map[int64]*Chat, 10),
+		redisCache: redisCache,
+		local: local,
 	}
 
 	bot.startBot()
@@ -57,23 +63,74 @@ func (bot *TgBot) ListenForLambda() {
 		if err != nil {
 			return toResponse(Result{Status: "invalid_request"}, 400), nil
 		}
-		if update.Message != nil {
-			chat, ok := bot.chats[update.Message.Chat.ID]
-			if !ok {
-				chat = NewChat(update.Message.Chat.ID, *bot)
-				bot.chats[update.Message.Chat.ID] = chat
-			}
-
-			chat.ProcessMessage(update.Message)
-			return toResponse(Result{Status: "ok", MessageId: update.Message.MessageID}, 200), nil
-		} else {
-			return toResponse(Result{Status: "not_a_message"}, 200), nil
-		}
+		return toResponse(bot.handleUpdate(&update), 200), nil
 	})
 }
 
+func (bot *TgBot) handleUpdate(update *tgbotapi.Update) (Result) {
+	if update.Message != nil {
+		chatState, ok := bot.GetChat(update.Message.Chat.ID)
+		var chat *Chat
+		if !ok {
+			chat = NewChat(update.Message.Chat.ID, bot)
+		} else {
+			chat = RestoreChat(chatState, bot)
+		}
+
+		chat.ProcessMessage(update.Message)
+
+		bot.SetChat(update.Message.Chat.ID, chat.State)
+		return Result{Status: "ok", MessageId: update.Message.MessageID}
+	} else {
+		return Result{Status: "not_a_message"}
+	}
+}
+
+func (bot *TgBot) GetChat(chatId int64) (*ChatState, bool){
+	var key = strconv.FormatInt(chatId, 10)
+	if bot.redisCache.Exists(key) {
+		chat := ChatState{}
+		err := bot.redisCache.Get(key, &chat)
+		if err != nil {
+			log.Println(err)
+			return nil, false
+		}
+		return &chat, true
+	} else {
+		return nil, false
+	}
+}
+
+func (bot *TgBot) SetChat(chatId int64, chat *ChatState) {
+	bot.redisCache.Set(&cache.Item{
+		Key: strconv.FormatInt(chatId, 10),
+		Object: chat,
+		Expiration: time.Hour,
+	})
+}
+
+
+
 func (bot *TgBot) startBot() {
 	log.Printf("Authorized on account %s", bot.Api.Self.UserName)
-	bot.ListenForLambda()
+	if bot.local {
+		http.HandleFunc("/Bot-callback", func(writer http.ResponseWriter, request *http.Request) {
+			update := tgbotapi.Update{}
+			err := json.NewDecoder(request.Body).Decode(&update)
+			if err != nil {
+				log.Println(err)
+				writer.Write([]byte(err.Error()))
+				writer.WriteHeader(500)
+			} else {
+				result := bot.handleUpdate(&update)
+				bytes, _ := json.Marshal(&result)
+				writer.Write(bytes)
+				writer.WriteHeader(200)
+			}
+		})
+		http.ListenAndServe("0.0.0.0:3456", nil)
+	} else {
+		bot.ListenForLambda()
+	}
 }
 

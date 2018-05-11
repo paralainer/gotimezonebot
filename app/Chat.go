@@ -9,18 +9,30 @@ import (
 	"fmt"
 )
 
-type Chat struct {
-	ChatID  int64
-	state   string
-	context interface{}
-	bot     TgBot
+type ChatState struct {
+	ChatID   int64
+	State    string
+	Location *Location
 }
 
-func NewChat(chatId int64, bot TgBot) *Chat {
+type Chat struct {
+	State *ChatState
+	bot   *TgBot
+}
+
+func NewChat(chatId int64, bot *TgBot) *Chat {
 	return &Chat{
-		ChatID: chatId,
-		state:  no_state,
+		State: &ChatState{
+			ChatID: chatId,
+			State: no_state,
+		},
 		bot:    bot,
+	}
+}
+func RestoreChat(state *ChatState, bot *TgBot) *Chat {
+	return &Chat{
+		State: state,
+		bot:   bot,
 	}
 }
 
@@ -38,25 +50,25 @@ func (chat *Chat) ProcessMessage(message *tgbotapi.Message) {
 	} else if message.Location != nil {
 		location := message.Location
 		chat.sendLocationTimeAndWeather(location.Latitude, location.Longitude)
-	} else if chat.state != no_state {
+	} else if chat.State.State != no_state {
 		chat.processConversation(message)
 	}
 }
 
 func (chat *Chat) sendText(text string) {
-	newMessage := tgbotapi.NewMessage(chat.ChatID, text)
+	newMessage := tgbotapi.NewMessage(chat.State.ChatID, text)
 	newMessage.ReplyMarkup = tgbotapi.NewRemoveKeyboard(false)
 	chat.bot.Api.Send(newMessage)
 }
 
 func (chat *Chat) sendWithReply(text string, replyMarkup interface{}) {
-	newMessage := tgbotapi.NewMessage(chat.ChatID, text)
+	newMessage := tgbotapi.NewMessage(chat.State.ChatID, text)
 	newMessage.ReplyMarkup = replyMarkup
 	chat.bot.Api.Send(newMessage)
 }
 
 func (chat *Chat) processCommand(message *tgbotapi.Message) {
-	chat.state = no_state
+	chat.State.State = no_state
 	arguments := message.CommandArguments()
 	switch message.Command() {
 	case "tztime":
@@ -85,7 +97,7 @@ func (chat *Chat) processCommand(message *tgbotapi.Message) {
 }
 
 func (chat *Chat) processConversation(message *tgbotapi.Message) {
-	switch chat.state {
+	switch chat.State.State {
 	case removing_location:
 		chat.removeLocationByAlias(message.Text)
 		break
@@ -103,12 +115,12 @@ func (chat *Chat) processConversation(message *tgbotapi.Message) {
 
 func (chat *Chat) confirmLocation(answer string) {
 	if answer == "Yes" {
-		chat.state = no_state
-		newLocation := chat.context.(*Location)
-		chat.bot.Location.AddLocation(chat.ChatID, *newLocation)
+		chat.State.State = no_state
+		newLocation := chat.State.Location
+		chat.bot.Location.AddLocation(chat.State.ChatID, *newLocation)
 		chat.sendText("Added")
 	} else {
-		chat.state = adding_location_coordinates
+		chat.State.State = adding_location_coordinates
 		chat.sendText("Send me a location of that place")
 	}
 
@@ -116,38 +128,38 @@ func (chat *Chat) confirmLocation(answer string) {
 
 func (chat *Chat) setLocationCoordinates(location *tgbotapi.Location) {
 	if location != nil {
-		chat.state = no_state
-		newLocation := chat.context.(*Location)
+		chat.State.State = no_state
+		newLocation := chat.State.Location
 		newLocation.Coordinates = formatCoordinates(location.Latitude, location.Longitude)
-		chat.bot.Location.AddLocation(chat.ChatID, *newLocation)
+		chat.bot.Location.AddLocation(chat.State.ChatID, *newLocation)
 		chat.sendText("Added")
 	} else {
-		chat.state = adding_location_coordinates
+		chat.State.State = adding_location_coordinates
 		chat.sendText("Please send location")
 	}
 }
 
 func (chat *Chat) setLocationName(locName string) {
 	if strings.Trim(locName, " ") != "" {
-		if chat.context == nil {
-			chat.context = &Location{}
+		if chat.State.Location == nil {
+			chat.State.Location = &Location{}
 		}
-		loc := chat.context.(*Location)
+		loc := chat.State.Location
 		loc.Alias = locName
 		geoInfo, err := GetGeoInfo(locName)
 		if err != nil {
-			chat.state = adding_location_coordinates
+			chat.State.State = adding_location_coordinates
 			chat.sendText("Send me a location of that place")
 		} else {
 			chat.sendText(geoInfo.LocationDisplayName)
-			chat.bot.Api.Send(tgbotapi.NewLocation(chat.ChatID, geoInfo.Lat, geoInfo.Lon))
+			chat.bot.Api.Send(tgbotapi.NewLocation(chat.State.ChatID, geoInfo.Lat, geoInfo.Lon))
 			chat.sendWithReply("Is that correct location?", tgbotapi.NewReplyKeyboard(
 				tgbotapi.NewKeyboardButtonRow(
 					tgbotapi.NewKeyboardButton("Yes"),
 					tgbotapi.NewKeyboardButton("No"),
 				)))
 			loc.Coordinates = formatCoordinates(geoInfo.Lat, geoInfo.Lon)
-			chat.state = confirming_location
+			chat.State.State = confirming_location
 		}
 	}
 }
@@ -164,13 +176,13 @@ func (chat *Chat) startRemoveLocation(message *tgbotapi.Message) {
 	}
 
 	chat.sendWithReply("Send me location name to delete", tgbotapi.NewReplyKeyboard(buttons...))
-	chat.state = removing_location
+	chat.State.State = removing_location
 }
 
 func (chat *Chat) removeLocationByAlias(alias string) {
-	chat.state = no_state
+	chat.State.State = no_state
 	alias = strings.Trim(alias, " ")
-	deleted := chat.bot.Location.RemoveTimezone(chat.ChatID, alias)
+	deleted := chat.bot.Location.RemoveTimezone(chat.State.ChatID, alias)
 	var text string
 	if deleted {
 		text = "Deleted"
@@ -182,8 +194,8 @@ func (chat *Chat) removeLocationByAlias(alias string) {
 }
 
 func (chat *Chat) startAddLocation(message *tgbotapi.Message) {
-	chat.state = adding_location_name
-	chat.context = &Location{}
+	chat.State.State = adding_location_name
+	chat.State.Location = &Location{}
 	chat.sendText("Send me location name")
 }
 
@@ -231,7 +243,7 @@ func (chat * Chat) sendLocationTimeAndWeatherByAlias(alias string) {
 		return
 	}
 	chat.sendText(geoInfo.LocationDisplayName)
-	chat.bot.Api.Send(tgbotapi.NewLocation(chat.ChatID, geoInfo.Lat, geoInfo.Lon))
+	chat.bot.Api.Send(tgbotapi.NewLocation(chat.State.ChatID, geoInfo.Lat, geoInfo.Lon))
 	chat.sendLocationTimeAndWeather(geoInfo.Lat, geoInfo.Lon)
 }
 
