@@ -7,6 +7,8 @@ import (
 	"time"
 	"log"
 	"fmt"
+	"strconv"
+	"unicode/utf8"
 )
 
 type ChatState struct {
@@ -47,7 +49,7 @@ const (
 func (chat *Chat) ProcessMessage(message *tgbotapi.Message) {
 	if message.IsCommand() {
 		chat.processCommand(message)
-	} else if message.Location != nil {
+	} else if message.Location != nil && chat.State.State != adding_location_coordinates {
 		location := message.Location
 		chat.sendLocationTimeAndWeather(location.Latitude, location.Longitude)
 	} else if chat.State.State != no_state {
@@ -57,6 +59,7 @@ func (chat *Chat) ProcessMessage(message *tgbotapi.Message) {
 
 func (chat *Chat) sendText(text string) {
 	newMessage := tgbotapi.NewMessage(chat.State.ChatID, text)
+	newMessage.ParseMode = tgbotapi.ModeMarkdown
 	newMessage.ReplyMarkup = tgbotapi.NewRemoveKeyboard(false)
 	chat.bot.Api.Send(newMessage)
 }
@@ -211,29 +214,39 @@ func (chat *Chat) sendTime(message *tgbotapi.Message) {
 }
 
 func (chat *Chat) convertTzToString(locations []Location) string {
-	result := make([]string, len(locations))
+	var result []string
 	currentTime := time.Now()
 	weatherChan := make(chan WeatherResult)
 	for _, location := range locations {
 		go chat.bot.Weather(location, weatherChan)
 	}
 
+	var maxLength = 0
+	var weatherResults []WeatherResult
 	for range locations {
 		weatherResult := <-weatherChan
+		weatherResults = append(weatherResults, weatherResult)
+		aliasLength := utf8.RuneCountInString(weatherResult.Weather.Location.Alias)
+		if aliasLength > maxLength {
+			maxLength = aliasLength
+		}
+	}
+
+	for _, weatherResult := range weatherResults {
 		if weatherResult.Error != nil {
 			log.Println(weatherResult.Error)
 			result = append(result, "Error occurred: "+weatherResult.Error.Error())
 		} else {
 			weather := weatherResult.Weather
 			formattedTzTime := formatTzTime(weather.Timezone, currentTime)
-			result = append(result, weather.Location.Alias+": "+formattedTzTime+weather.Conditions)
+			result = append(result, fmt.Sprintf("%-" + strconv.Itoa(maxLength + 1) + "s %s %s", weather.Location.Alias + ":", formattedTzTime, weather.Conditions))
 		}
 
 	}
 
 	sort.Strings(result)
 
-	return strings.Join(result, "\n")
+	return "```\n" + strings.Join(result, "\n") + "\n```"
 }
 
 func (chat * Chat) sendLocationTimeAndWeatherByAlias(alias string) {
@@ -272,6 +285,6 @@ func formatTzTime(tz string, currentTime time.Time) (string) {
 		log.Panic(err)
 	}
 	t := currentTime.In(location)
-	formattedTzTime := t.Format("Jan _2, 2006 15:04")
+	formattedTzTime := t.Format("Jan _2 15:04")
 	return formattedTzTime
 }

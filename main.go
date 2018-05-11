@@ -1,10 +1,10 @@
 package main
 
 import (
-	"log"
 	"os"
 	"gotimezonebot/app"
 	"gopkg.in/mgo.v2"
+	"log"
 	"github.com/go-redis/redis"
 	"github.com/go-redis/cache"
 	"encoding/json"

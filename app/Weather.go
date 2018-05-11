@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"github.com/patrickmn/go-cache"
 	"time"
+	"fmt"
 )
 
 type Weather struct {
@@ -80,7 +81,7 @@ func CreateDarkSkyWeatherFetcher(apiKey string) GetWeather {
 		}
 		ch <- WeatherResult{
 			Weather: Weather{
-				Conditions: " " + emoji + " " + temp + "℃",
+				Conditions: fmt.Sprintf("%s %2s°C", emoji, temp),
 				Timezone:   result["timezone"].(string),
 				Location:   location,
 			},
