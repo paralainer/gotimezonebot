@@ -1,13 +1,16 @@
 package main
 
 import (
-	"os"
-	"gotimezonebot/app"
-	"gopkg.in/mgo.v2"
-	"log"
-	"github.com/go-redis/redis"
-	"github.com/go-redis/cache"
+	"context"
 	"encoding/json"
+	"github.com/go-redis/cache"
+	"github.com/go-redis/redis"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"log"
+	"os"
+	"tzbot/app"
 )
 
 func main() {
@@ -21,8 +24,7 @@ func main() {
 		log.Panic("No WEATHER_API_KEY specified")
 	}
 
-	tzService, session := initMongo()
-	defer session.Close()
+	tzService, _ := initMongo()
 
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     os.Getenv("REDIS_URL"),
@@ -48,15 +50,21 @@ func main() {
 	app.StartBot(telegramToken, tzService, app.WrapWeatherWithCache(app.CreateDarkSkyWeatherFetcher(weatherApiKey)), redisCache, false)
 }
 
-func initMongo() (*app.MongoLocationsService, *mgo.Session) {
-	session, err := mgo.Dial(os.Getenv("MONGO_URL"))
+func initMongo() (*app.MongoLocationsService, *mongo.Client) {
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(os.Getenv("MONGO_URL")))
 	if err != nil {
 		panic(err)
 	}
-	session.SetSafe(&mgo.Safe{})
-	tzService := app.NewLocationsService(
-		session,
-		func(s *mgo.Session) *mgo.Collection { return s.DB("tzbot").C("MONGO_TZ_COLLECTION") })
 
-	return tzService, session
+	err = client.Ping(context.TODO(), readpref.Primary())
+	if err != nil {
+		panic(err)
+	}
+
+	tzService := app.NewLocationsService(
+		context.TODO(),
+		client,
+		func(c *mongo.Client) *mongo.Collection { return c.Database("tzbot").Collection("MONGO_TZ_COLLECTION") })
+
+	return tzService, client
 }

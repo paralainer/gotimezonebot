@@ -1,8 +1,9 @@
 package app
 
 import (
-	"gopkg.in/mgo.v2"
-	"gopkg.in/mgo.v2/bson"
+	"context"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"log"
 )
 
@@ -12,34 +13,34 @@ type Location struct {
 }
 
 type tz struct {
-	ChatID    int64 `bson:"chatId"`
+	ChatID    int64      `bson:"chatId"`
 	Locations []Location `bson:"locations"`
 }
 
 type MongoLocationsService struct {
-	session *mgo.Session
+	ctx           context.Context
+	client        *mongo.Client
 	getCollection GetCollection
 }
 
-type GetCollection func(session *mgo.Session) *mgo.Collection
+type GetCollection func(session *mongo.Client) *mongo.Collection
 
-func NewLocationsService(mongoSession *mgo.Session, getCollection GetCollection) *MongoLocationsService {
+func NewLocationsService(ctx context.Context, mongoClient *mongo.Client, getCollection GetCollection) *MongoLocationsService {
 	return &MongoLocationsService{
-		session: mongoSession,
+		ctx:           ctx,
+		client:        mongoClient,
 		getCollection: getCollection,
 	}
 }
 
-func (botTz MongoLocationsService) collection() (*mgo.Collection, *mgo.Session) {
-    session := botTz.session.Copy()
-	return botTz.getCollection(session), session
+func (botTz MongoLocationsService) collection() *mongo.Collection {
+	return botTz.getCollection(botTz.client)
 }
 
 func (botTz MongoLocationsService) GetChatLocations(chatID int64) []Location {
 	tz := &tz{}
-	collection, session := botTz.collection()
-	defer session.Close()
-	err := collection.Find(bson.M{"chatId": chatID}).One(&tz)
+	collection := botTz.collection()
+	err := collection.FindOne(botTz.ctx, bson.M{"chatId": chatID}).Decode(&tz)
 	if err != nil {
 		log.Println(err)
 	}
@@ -47,28 +48,26 @@ func (botTz MongoLocationsService) GetChatLocations(chatID int64) []Location {
 }
 
 func (botTz MongoLocationsService) AddLocation(chatID int64, location Location) {
-	collection, session := botTz.collection()
-	defer session.Close()
-	count, _ := collection.Find(bson.M{"chatId": chatID}).Count()
+	collection := botTz.collection()
+	count, _ := collection.CountDocuments(botTz.ctx, bson.M{"chatId": chatID})
 	if count == 0 {
 		tz := &tz{
 			ChatID:    chatID,
 			Locations: []Location{location},
 		}
 
-		collection.Insert(tz)
+		collection.InsertOne(botTz.ctx, tz)
 	} else {
-		collection.Update(bson.M{"chatId": chatID}, bson.M{"$addToSet": bson.M{"locations": location}} )
+		collection.UpdateOne(botTz.ctx, bson.M{"chatId": chatID}, bson.M{"$addToSet": bson.M{"locations": location}})
 	}
 }
 
 func (botTz MongoLocationsService) RemoveTimezone(chatID int64, alias string) bool {
 	findQuery := bson.M{"chatId": chatID, "locations": bson.M{"$elemMatch": bson.M{"alias": alias}}}
 	updateQuery := bson.M{"$pull": bson.M{"locations": bson.M{"alias": alias}}}
-	collection, session := botTz.collection()
-	defer session.Close()
-	err := collection.Update(findQuery, updateQuery)
-	if err == mgo.ErrNotFound {
+	collection := botTz.collection()
+	result, err := collection.UpdateOne(botTz.ctx, findQuery, updateQuery)
+	if result != nil && result.MatchedCount == 0 {
 		return false
 	}
 

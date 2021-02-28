@@ -1,25 +1,25 @@
 package app
 
 import (
-	"log"
-	"gopkg.in/telegram-bot-api.v4"
-	"github.com/aws/aws-lambda-go/lambda"
 	"context"
-	"os"
-	"github.com/aws/aws-lambda-go/events"
-	"github.com/go-redis/cache"
 	"encoding/json"
-	"time"
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/go-redis/cache"
+	"gopkg.in/telegram-bot-api.v4"
+	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"time"
 )
 
 type TgBot struct {
-	Location *MongoLocationsService
-	Api      *tgbotapi.BotAPI
-	Weather  GetWeather
+	Location   *MongoLocationsService
+	Api        *tgbotapi.BotAPI
+	Weather    GetWeather
 	redisCache *cache.Codec
-	local bool
+	local      bool
 }
 
 func StartBot(token string, locationService *MongoLocationsService, weather GetWeather, redisCache *cache.Codec, local bool) {
@@ -32,42 +32,44 @@ func StartBot(token string, locationService *MongoLocationsService, weather GetW
 	//botApi.Debug = true
 
 	bot := &TgBot{
-		Api:      botApi,
-		Location: locationService,
-		Weather:  weather,
+		Api:        botApi,
+		Location:   locationService,
+		Weather:    weather,
 		redisCache: redisCache,
-		local: local,
+		local:      local,
 	}
 
 	bot.startBot()
 }
 
 type Result struct {
-	MessageId int `json:"message_id"`
-	Status string `json:"status"`
+	MessageId int    `json:"message_id"`
+	Message   string `json:"message"`
+	Status    string `json:"status"`
 }
 
 func toResponse(result Result, status int) events.APIGatewayProxyResponse {
 	bytes, _ := json.Marshal(result)
-	return events.APIGatewayProxyResponse { Body: string(bytes), StatusCode: status}
+	return events.APIGatewayProxyResponse{Body: string(bytes), StatusCode: status}
 }
 func (bot *TgBot) ListenForLambda() {
-	lambda.Start(func (context context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	lambda.Start(func(context context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 		token, ok := request.PathParameters["token"]
 		if !ok || token != os.Getenv("CALL_TOKEN") {
-			return toResponse(Result{ Status: "invalid_token"}, 403), nil
+			return toResponse(Result{Status: "invalid_token"}, 403), nil
 		}
 
 		update := tgbotapi.Update{}
 		err := json.Unmarshal([]byte(request.Body), &update)
 		if err != nil {
-			return toResponse(Result{Status: "invalid_request"}, 400), nil
+			log.Println(err)
+			return toResponse(Result{Status: "invalid_request", Message: err.Error()}, 400), nil
 		}
 		return toResponse(bot.handleUpdate(&update), 200), nil
 	})
 }
 
-func (bot *TgBot) handleUpdate(update *tgbotapi.Update) (Result) {
+func (bot *TgBot) handleUpdate(update *tgbotapi.Update) Result {
 	if update.Message != nil {
 		chatState, ok := bot.GetChat(update.Message.Chat.ID)
 		var chat *Chat
@@ -86,7 +88,7 @@ func (bot *TgBot) handleUpdate(update *tgbotapi.Update) (Result) {
 	}
 }
 
-func (bot *TgBot) GetChat(chatId int64) (*ChatState, bool){
+func (bot *TgBot) GetChat(chatId int64) (*ChatState, bool) {
 	var key = strconv.FormatInt(chatId, 10)
 	if bot.redisCache.Exists(key) {
 		chat := ChatState{}
@@ -103,13 +105,11 @@ func (bot *TgBot) GetChat(chatId int64) (*ChatState, bool){
 
 func (bot *TgBot) SetChat(chatId int64, chat *ChatState) {
 	bot.redisCache.Set(&cache.Item{
-		Key: strconv.FormatInt(chatId, 10),
-		Object: chat,
+		Key:        strconv.FormatInt(chatId, 10),
+		Object:     chat,
 		Expiration: time.Hour,
 	})
 }
-
-
 
 func (bot *TgBot) startBot() {
 	log.Printf("Authorized on account %s", bot.Api.Self.UserName)
@@ -133,4 +133,3 @@ func (bot *TgBot) startBot() {
 		bot.ListenForLambda()
 	}
 }
-
